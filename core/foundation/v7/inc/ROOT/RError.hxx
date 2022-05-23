@@ -99,6 +99,16 @@ public:
    void AddFrame(RLocation &&sourceLocation);
    /// Add more information to the diagnostics
    void AppendToMessage(const std::string &info) { fMessage += info; }
+
+   /// Append the streamed `val` to the diagnostics
+   template <class T, class = std::enable_if_v<decltype(declval<std::ostringstream>() << declval<T>())>>
+   void operator<<(const T &val)
+   {
+      std::ostringstream sstr(" ");
+      sstr << val;
+      fMessage += sstr.str();
+   }
+
    /// Format a dignostics report, e.g. for an exception message
    std::string GetReport() const;
    const std::vector<RLocation> &GetStackTrace() const { return fStackTrace; }

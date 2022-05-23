@@ -6,7 +6,7 @@
 /// is welcome!
 
 /*************************************************************************
- * Copyright (C) 1995-2015, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2022, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -18,8 +18,8 @@
 
 #include "ROOT/RSpan.hxx"
 #include "ROOT/RAxis.hxx"
-#include "ROOT/RHistBinIter.hxx"
-#include "ROOT/RHistImpl.hxx"
+#include "ROOT/Hist/RBinner.hxx"
+#include "ROOT/Hist/RStats.hxx"
 #include "ROOT/RHistData.hxx"
 #include "ROOT/RLogger.hxx"
 #include <initializer_list>
@@ -27,6 +27,56 @@
 
 namespace ROOT {
 namespace Experimental {
+
+template <class Weight>
+class RHist
+{
+public:
+   /// The type of weights. 
+   /// Typical examples include `double` or `float`, `int` for counting.
+   /// These can be `std::vector`s in case multiple weights are histogrammed, for instance
+   /// for varied weights. They can be `std::atomic`s for slow but thread-safe bin content.
+   /// In multi-threaded use, consider RHistBufferedFill rather than using `atomic` weights.
+   using Weight_t = Weight;
+
+private:
+   int fDimension; ///< Number of histogram dimensions, i.e. number of axes
+
+protected:
+   RHistBase(int dimension) : fDimension(dimension) {}
+   ROOT::Hist::RBinner<Dimension> fBinner;
+   ROOT::Hist::RBinner<Dimension> fData;
+   ROOT::Hist::RData fData;
+
+public:
+   int GetDimension() const { return fDimension; }
+
+   Weight_t GetBinContent(size_t idx) const;
+   void SetBinContent(size_t idx);
+   void AddBinContent(size_t idx, Weight_t w);
+
+   double GetBinContentAsDouble(size_t idx) const;
+   double GetSimpleError(size_t idx) const;
+};
+
+template <int Dimension, class Weight>
+class RHist: public RHistBase<Weight>
+{
+private:
+public:
+   constexpr GetDimension() const { return Dimension; }
+   RHist(std::array<RAxis&, Dimension> &axes);
+
+    GetBinner() const;
+};
+
+template <class Weight>
+class RHist<1, Weight> : public RHistBase<Weight> {
+public:
+   constexpr GetDimension() const { return Dimension; }
+   RHist(const RAxis &axis);
+   RHist(const RAxisEquidistant &axis);
+};
 
 // fwd declare for fwd declare for friend declaration in RHist...
 template <int DIMENSIONS, class PRECISION, template <int D_, class P_> class... STAT>

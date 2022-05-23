@@ -17,6 +17,7 @@
 
 #include "ROOT/RHistUtils.hxx"
 #include <ROOT/RLogger.hxx>
+#include <ROOT/RError.hxx>
 
 #include <cmath>
 #include <limits>
@@ -46,6 +47,13 @@ bool ROOT::Experimental::RAxisBase::HasSameBinningAs(const RAxisBase& other) con
    } else {
       return true;
    }
+}
+
+const_iterator ROOT::Experimental::RAxisBase::GetBinIndexForLowEdge(double x) const
+{
+   static constexpr const char *coordTypeName[] = {"double", "float", "int64_t", "uint64_t", "std::string"};
+   throw RException(R__FAIL("This axis coordinate type `")
+                    << coordTypeName[fCoordType] << "` is incompatible with `double` coordinates");
 }
 
 int ROOT::Experimental::RAxisEquidistant::GetBinIndexForLowEdge(double x) const noexcept
