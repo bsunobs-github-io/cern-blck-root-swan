@@ -21,7 +21,9 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "ROOT/RAxisIterator.hxx"
@@ -29,6 +31,42 @@
 
 namespace ROOT {
 namespace Experimental {
+
+namespace Internal {
+namespace Hist {
+/// The axis argument type for coordinates; corresponds to the alternatives of CoordArgVariant_t.
+enum class ECoord {
+   kDouble, ///< The axis takes `double` as coordinate.
+   kFloat,  ///< The axis takes `float` as coordinate.
+   kInt64,  ///< The axis takes `int64_t` as coordinate.
+   kUInt64, ///< The axis takes `uint64_t` as coordinate.
+   kLabel,  ///< The axis takes `std::string` as coordinate.
+
+   kNumAxisCoords ///< Marker for determining the last element.
+};
+
+/// Find the value of ECoord that matches CoordType.
+template <class CoordType, bool IsInt = std::is_integral_v<CoordType>>
+static constexpr int kCoordArgVariant = -1;
+
+template <>
+constexpr int kCoordArgVariant<double> = static_cast<int>(ECoord::kDouble);
+
+template <>
+constexpr int kCoordArgVariant<float> = static_cast<int>(ECoord::kFloat);
+
+template <class CoordType>
+constexpr int
+   kCoordArgVariant<CoordType, true> = static_cast<int>(std::is_signed_v<CoordType> ? ECoord::kInt64
+                                                                                    : ECoord::kUInt64);
+
+template <>
+constexpr int kCoordArgVariant<std::string> = static_cast<int>(ECoord::kLabel);
+
+template <>
+constexpr int kCoordArgVariant<const char *> = static_cast<int>(ECoord::kLabel);
+} // namespace Hist
+} // namespace Internal
 
 /**
  \class RAxisBase
@@ -69,38 +107,6 @@ public:
     */
    using CoordArgVariant_t = std::variant<double, float, int64_t, uint64_t, std::string>;
 
-   /// The axis argument type for coordinates; corresponds to the alternatives of CoordArgVariant_t.
-   enum class ECoord {
-      kDouble, ///< The axis takes `double` as coordinate.
-      kFloat,  ///< The axis takes `float` as coordinate.
-      kInt64,  ///< The axis takes `int64_t` as coordinate.
-      kUInt64, ///< The axis takes `uint64_t` as coordinate.
-      kLabel,  ///< The axis takes `std::string` as coordinate.
-
-      kNumAxisCoords ///< Marker for determining the last element.
-   };
-
-   /// Extract the value
-   template <class CoordType, bool IsInt = std::is_integral_v<CoordType>>
-   static constexpr int kCoordArgVariant = -1;
-
-   template <>
-   static constexpr int kCoordArgVariant<double> = static_cast<int>(ECoord::kDouble);
-
-   template <>
-   static constexpr int kCoordArgVariant<float> = static_cast<int>(ECoord::kFloat);
-
-   template <class CoordType>
-   static constexpr int
-      kCoordArgVariant<CoordType, true> = static_cast<int>(std::is_signed_v<CoordType> ? ECoord::kInt64
-                                                                                       : ECoord::kUInt64);
-
-   template <>
-   static constexpr int kCoordArgVariant<std::string> = static_cast<int>(ECoord::kLabel);
-
-   template <>
-   static constexpr int kCoordArgVariant<const char *> = static_cast<int>(ECoord::kLabel);
-
 protected:
    ///\name Inaccessible copy, assignment
    /// The copy and move constructors and assignment operators are protected to
@@ -122,7 +128,7 @@ protected:
    ///
    ///\param[in] title - axis title used for graphics and text representation.
    ///\param[in] overflowHandling - how to treat coordinates beyond the axis range.
-   RAxisBase(std::string_view title, EKind kind, ECoord coordType, EOverflow overflowHandling) noexcept
+   RAxisBase(std::string_view title, EKind kind, Internal::Hist::ECoord coordType, EOverflow overflowHandling) noexcept
       : fTitle(title), fKind(kind), fCoordType(coordType), fOverflowHandling(overflowHandling)
    {
    }
@@ -230,7 +236,7 @@ public:
    /// for overflow) for the given coordinate.
    /// \note Passing the coordinate of a bin border can either return the bin above or
    /// below the bin border. I.e. don't do that for reliable results!
-   virtual const_iterator FindBin(CoordArgVariant_t x) const noexcept = 0;
+   virtual const_iterator FindBin(const CoordArgVariant_t &x) const noexcept = 0;
 
    ///\name Getters for bin coordinates.
    ///\{
@@ -281,8 +287,8 @@ private:
    EKind fKind : 2; ///< Derived axis type.
    static_assert(1 >> 2 < static_cast<int>(EKind::kNumAxisKinds), "Too few bits for fKind.");
 
-   ECoord fCoordType : 3; ///< Type of the axis coordinates.
-   static_assert(1 >> 3 < static_cast<int>(ECoord::kNumAxisCoords), "Too few bits for fCoordType.");
+   Internal::Hist::ECoord fCoordType : 3; ///< Type of the axis coordinates.
+   static_assert(1 >> 3 < static_cast<int>(Internal::Hist::ECoord::kNumAxisCoords), "Too few bits for fCoordType.");
 
    EOverflow fOverflowHandling : 4; ///< Overflow handling of the axis.
    static_assert(1 >> 4 < static_cast<int>(EOverflow::kNumAxisOverflows), "Too few bits for fOverflowHandling.");
@@ -415,13 +421,15 @@ struct RAxisEquidistantBinCalc<CoordType, /* IsFloat */ false> {
 } // namespace Internal
 
 /**
- Axis with equidistant bin borders. Defined by lower l and upper u limit and
- the number of bins n. All bins have the same width (u-l)/n.
+ Axis with equidistant bin borders. Defined by lower `L` and upper `U` limit and
+ the number of bins `N`. All bins have the same width `(U-L)/N`.
  */
 template <class CoordType>
 class RAxisEquidistant : public RAxisBase {
 public:
    using CoordType_t = CoordType;
+
+   static_assert(std::is_same_v<CoordType, std::string> && "Please use RAxisLabels instead.");
 
 protected:
    static constexpr bool kIsFloat = std::is_floating_point_v<CoordType>;
@@ -472,7 +480,7 @@ public:
    /// \param high - the high axis range. Any coordinate above that is considered
    ///   as overflow. The last bin's higher edge is at this value.
    explicit RAxisEquidistant(std::string_view title, int nbinsNoOver, CoordType low, CoordType high, EOverflow overflow = EOverflow::kBoth) noexcept
-      : RAxisBase(title, EKind::kEquidistant, kCoordArgVariant<CoordType_t>, overflow), fBinCalc(low, high, nbinsNoOver)
+      : RAxisBase(title, EKind::kEquidistant, Internal::Hist::kCoordArgVariant<CoordType_t>, overflow), fBinCalc(low, high, nbinsNoOver)
    {
    }
 
@@ -495,9 +503,9 @@ public:
    /// `GetOverflowBin()` for overflow) for the given coordinate.
    /// \note Passing a bin border coordinate can either return the bin above or
    /// below the bin border. I.e. don't do that for reliable results!
-   const_iterator FindBin(CoordArgVariant_t x) const noexcept final
+   const_iterator FindBin(const CoordArgVariant_t &x) const noexcept final
    {
-      auto coord = std::get<kCoordArgVariant<CoordType>>(x);
+      auto coord = std::get<Internal::Hist::kCoordArgVariant<CoordType>>(x);
       if (DoesWrap())
          coord = std::fmod(coord, fBinCalc.GetLength());
 
@@ -532,101 +540,6 @@ public:
    const_iterator GetBinIndexForLowEdge(double x) const final;
 };
 
-namespace Internal {
-
-template <>
-struct AxisConfigToType<RAxisConfig::kEquidistant> {
-   using Axis_t = RAxisEquidistant;
-
-   Axis_t operator()(const RAxisConfig &cfg) noexcept
-   {
-      return RAxisEquidistant(cfg.GetTitle(), cfg.GetNBinsNoOver(), cfg.GetBinBorders()[0], cfg.GetBinBorders()[1]);
-   }
-};
-
-} // namespace Internal
-
-/** An axis that can extend its range, keeping the number of its bins unchanged.
- The axis is constructed with an initial range. Apart from its ability to
- grow, this axis behaves like a RAxisEquidistant.
- */
-class RAxisGrow : public RAxisEquidistant {
-public:
-   /// Initialize a RAxisGrow.
-   /// \param[in] title - axis title used for graphics and text representation.
-   /// \param nbins - number of bins in the axis, excluding under- and overflow
-   ///   bins. This value is fixed over the lifetime of the object.
-   /// \param low - the initial value for the low axis range. Any coordinate
-   ///   below that is considered as underflow. To trigger the growing of the
-   ///   axis call `Grow()`.
-   /// \param high - the initial value for the high axis range. Any coordinate
-   ///   above that is considered as overflow. To trigger the growing of the
-   ///   axis call `Grow()`.
-   explicit RAxisGrow(std::string_view title, int nbins, double low, double high) noexcept
-      : RAxisEquidistant(title, nbins, low, high)
-   {
-   }
-
-   /// Initialize a RAxisGrow.
-   /// \param nbins - number of bins in the axis, excluding under- and overflow
-   ///   bins. This value is fixed over the lifetime of the object.
-   /// \param low - the initial value for the low axis range. Any coordinate
-   ///   below that is considered as underflow. To trigger the growing of the
-   ///   axis call `Grow()`.
-   /// \param high - the initial value for the high axis range. Any coordinate
-   ///   above that is considered as overflow. To trigger the growing of the
-   ///   axis call `Grow()`.
-   explicit RAxisGrow(int nbins, double low, double high) noexcept : RAxisGrow("", nbins, low, high) {}
-
-   /// Convert to RAxisConfig.
-   operator RAxisConfig() const
-   {
-      return RAxisConfig(GetTitle(), RAxisConfig::Grow, GetNBinsNoOver(), GetMinimum(), GetMaximum());
-   }
-
-   /// Grow this axis to make the "virtual bin" toBin in-range. This keeps the
-   /// non-affected axis limit unchanged, and extends the other axis limit such
-   /// that a number of consecutive bins are merged.
-   ///
-   /// Example, assuming an initial RAxisGrow with 10 bins from 0. to 1.:
-   ///   - `Grow(0)`: that (virtual) bin spans from -0.1 to 0. To include it
-   ///     in the axis range, the lower limit must be shifted. The minimal number
-   ///     of bins that can be merged is 2, thus the new axis will span from
-   ///     -1. to 1.
-   ///   - `Grow(-1)`: that (virtual) bin spans from -0.2 to 0.1. To include it
-   ///     in the axis range, the lower limit must be shifted. The minimal number
-   ///     of bins that can be merged is 2, thus the new axis will span from
-   ///     -1. to 1.
-   ///   - `Grow(50)`: that (virtual) bin spans from 4.9 to 5.0. To include it
-   ///     in the axis range, the higher limit must be shifted. Five bins need to
-   ///     be merged, making the new axis range 0. to 5.0.
-   ///
-   /// \param toBin - the "virtual" bin number, as if the axis had an infinite
-   ///   number of bins with the current bin width. For instance, for an axis
-   ///   with ten bins in the range 0. to 1., the coordinate 2.05 has the virtual
-   ///   bin index 20.
-   /// \return Returns the number of bins that were merged to reach the value.
-   ///   A value of 1 means that no bins were merged (toBin was in the original
-   ///   axis range).
-   int Grow(int toBin);
-
-   /// This axis kind can increase its range.
-   bool CanGrow() const noexcept final { return true; }
-};
-
-namespace Internal {
-
-template <>
-struct AxisConfigToType<RAxisConfig::kGrow> {
-   using Axis_t = RAxisGrow;
-
-   Axis_t operator()(const RAxisConfig &cfg) noexcept
-   {
-      return RAxisGrow(cfg.GetTitle(), cfg.GetNBinsNoOver(), cfg.GetBinBorders()[0], cfg.GetBinBorders()[1]);
-   }
-};
-
-} // namespace Internal
 
 /**
  An axis with non-equidistant bins (also known as "variable binning"). It is
@@ -640,7 +553,13 @@ struct AxisConfigToType<RAxisConfig::kGrow> {
 
  This axis cannot grow; the size of new bins would not be well defined.
  */
+template <class CoordType>
 class RAxisIrregular : public RAxisBase {
+public:
+
+   using CoordType_t = CoordType;
+   static_assert(std::is_same_v<CoordType, std::string> && "Please use RAxisLabels instead.");
+
 private:
    /// Bin borders, one more than the number of regular bins.
    std::vector<double> fBinBorders;
@@ -653,7 +572,7 @@ protected:
    /// The resulting raw bin is 1-based.
    /// \note Passing a bin border coordinate can either return the bin above or
    /// below the bin border. I.e. don't do that for reliable results!
-   double FindBinRaw(double x) const noexcept
+   const_iterator FindBinRaw(const CoordArgVariant_t &x) const noexcept
    {
       const auto bBegin = fBinBorders.begin();
       const auto bEnd = fBinBorders.end();
@@ -771,6 +690,7 @@ public:
       return fBinBorders;
    }
 };
+
 
 namespace Internal {
 
