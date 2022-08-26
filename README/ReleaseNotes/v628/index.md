@@ -61,6 +61,9 @@ Please use their non-experimental counterparts `ROOT::TBufferMerger` and `ROOT::
 
 ## I/O Libraries
 
+Asyncronous prefetching is now enabled.
+Turn if off by setting `TFile.AsyncPrefetching` to `0` in `rootrc`.
+
 
 ## TTree Libraries
 
