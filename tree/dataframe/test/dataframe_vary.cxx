@@ -127,9 +127,8 @@ TEST(RDFVary, RequireVariationsHaveConsistentType)
       std::runtime_error);
 }
 
-// throwing exceptions from jitted code cause problems on windows and MacOS+M1
+// throwing exceptions from jitted code cause problems on windows
 #if !defined(_MSC_VER) || defined(R__ENABLE_BROKEN_WIN_TESTS)
-#if !(defined(R__MACOSX) && defined(__arm64__))
 TEST(RDFVary, RequireVariationsHaveConsistentTypeJitted)
 {
    // non-jitted Define, jitted Vary with incompatible type
@@ -198,7 +197,6 @@ TEST(RDFVary, RequireVariationsHaveConsistentTypeJitted)
          std::runtime_error);
    }
 }
-#endif
 #endif
 
 TEST(RDFVary, RequireReturnTypeIsRVec)
