@@ -151,14 +151,14 @@ namespace clang {
       M.reset(new llvm::Module(ModuleName, C));
       Initialize(*Ctx);
 
-      assert(OldBuilder->DeferredDeclsToEmit.empty()
-             && "Should have emitted all decls deferred to emit.");
+      assert(OldBuilder->DeferredDeclsToEmit.empty() &&
+             "Should have emitted all decls deferred to emit.");
       assert(Builder->DeferredDecls.empty()
              && "Newly created module should not have deferred decls");
       Builder->DeferredDecls.swap(OldBuilder->DeferredDecls);
 
-      assert(OldBuilder->EmittedDeferredDecls.empty()
-             && "Still have (unmerged) EmittedDeferredDecls deferred decls");
+      assert(OldBuilder->EmittedDeferredDecls.empty() &&
+             "Still have (unmerged) EmittedDeferredDecls deferred decls");
 
       assert(Builder->DeferredVTables.empty()
              && "Newly created module should not have deferred vtables");
@@ -482,6 +482,19 @@ namespace clang {
 
       Builder->EmitVTable(RD);
     }
+
+    llvm::DenseMap<llvm::StringRef, GlobalDecl> &&TakeEmittedDeferredDecls() {
+      return std::move(Builder->EmittedDeferredDecls);
+    }
+
+    void MarkDeferred(llvm::DenseMap<llvm::StringRef, GlobalDecl> &&PD) {
+      auto InitialSize = Builder->DeferredDecls.size();
+      (void)InitialSize;
+
+      Builder->DeferredDecls.insert(PD.begin(), PD.end());
+      assert(PD.size() + InitialSize == Builder->DeferredDecls.size() &&
+             "Tried to inject uplicate pending decls!");
+    }
   };
 }
 
@@ -536,6 +549,16 @@ llvm::Module *CodeGenerator::StartModule(llvm::StringRef ModuleName,
                                          llvm::LLVMContext& C,
                                          const CodeGenOptions& CGO) {
   return static_cast<CodeGeneratorImpl*>(this)->StartModule(ModuleName, C, CGO);
+}
+
+llvm::DenseMap<llvm::StringRef, GlobalDecl> &&
+CodeGenerator::TakeEmittedDeferredDecls() {
+  return static_cast<CodeGeneratorImpl *>(this)->TakeEmittedDeferredDecls();
+}
+
+void CodeGenerator::MarkDeferred(
+    llvm::DenseMap<llvm::StringRef, GlobalDecl> &&PD) {
+  static_cast<CodeGeneratorImpl *>(this)->MarkDeferred(std::move(PD));
 }
 
 CodeGenerator *clang::CreateLLVMCodeGen(

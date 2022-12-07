@@ -348,33 +348,24 @@ private:
   /// for emission and therefore should only be output if they are actually
   /// used. If a decl is in this, then it is known to have not been referenced
   /// yet.
-  std::map<StringRef, GlobalDecl> DeferredDecls;
+  llvm::DenseMap<StringRef, GlobalDecl> DeferredDecls;
+
+  /// This is a list of deferred decls that *might* come from a different
+  /// Transaction. When unloading this Transaction's module, these decls
+  /// must be put back into pending state such that subsequent usage can
+  /// emit them again.
+  llvm::DenseMap<llvm::StringRef, GlobalDecl> EmittedDeferredDecls;
 
   /// Decls that were DeferredDecls and have now been emitted.
-  std::map<StringRef, GlobalDecl> EmittedDeferredDecls;
-  void addEmittedDeferredDecl(GlobalDecl GD, StringRef MangledName) {
-    bool IsAFunction = isa<FunctionDecl>(GD.getDecl());
-    const VarDecl* VD = IsAFunction ? nullptr : dyn_cast<VarDecl>(GD.getDecl());
-    assert((IsAFunction || VD) && "Unexpected Decl type!");
-    bool ExcludeCtor = false; // FIXME: this is too simple!
-    llvm::GlobalValue::LinkageTypes L
-      = IsAFunction ? getFunctionLinkage(GD) :
-      getLLVMLinkageVarDefinition(VD, isTypeConstant(VD->getType(),
-                                                     ExcludeCtor));
-    if (llvm::GlobalValue::isLinkOnceLinkage(L)
-        || llvm::GlobalValue::isWeakLinkage(L)) {
-      if (MangledName.empty())
-        MangledName = getMangledName(GD);
-      EmittedDeferredDecls[MangledName] = GD;
-    }
+  void addEmittedDeferredDecl(GlobalDecl GD, StringRef Name) {
+      EmittedDeferredDecls[Name] = GD;
   }
 
   /// This is a list of deferred decls which we have seen that *are* actually
   /// referenced. These get code generated when the module is done.
-  std::vector<GlobalDecl> DeferredDeclsToEmit;
-  void addDeferredDeclToEmit(GlobalDecl GD, StringRef MangledName) {
+  SmallVector<GlobalDecl, 16> DeferredDeclsToEmit;
+  void addDeferredDeclToEmit(GlobalDecl GD) {
     DeferredDeclsToEmit.emplace_back(GD);
-    addEmittedDeferredDecl(GD, MangledName);
   }
 
   /// List of alias we have emitted. Used to make sure that what they point to

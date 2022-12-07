@@ -14,6 +14,7 @@
 #define LLVM_CLANG_CODEGEN_MODULEBUILDER_H
 
 #include "clang/AST/ASTConsumer.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace llvm {
   class Constant;
@@ -97,6 +98,10 @@ public:
   llvm::Module* StartModule(llvm::StringRef ModuleName,
                             llvm::LLVMContext& C,
                             const CodeGenOptions& CGO);
+
+  llvm::DenseMap<llvm::StringRef, GlobalDecl> &&TakeEmittedDeferredDecls();
+
+  void MarkDeferred(llvm::DenseMap<llvm::StringRef, GlobalDecl> &&PD);
 };
 
 /// CreateLLVMCodeGen - Create a CodeGenerator instance.

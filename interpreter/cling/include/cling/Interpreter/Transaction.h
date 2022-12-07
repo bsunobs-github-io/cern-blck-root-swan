@@ -15,6 +15,7 @@
 #include "clang/AST/DeclGroup.h"
 #include "clang/Basic/SourceLocation.h"
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
@@ -25,6 +26,7 @@ namespace clang {
   class ASTContext;
   class Decl;
   class FunctionDecl;
+  class GlobalDecl;
   class IdentifierInfo;
   class NamedDecl;
   class NamespaceDecl;
@@ -156,6 +158,12 @@ namespace cling {
     ///\brief The llvm Module containing the information that we will revert
     ///
     std::unique_ptr<llvm::Module> m_Module;
+
+    ///\brief Emitted decls that were deferred from a previous Module. Upon
+    /// unloading this transaction, these must be "put back" into deferred
+    /// state to make them available for subsequent re-emission.
+    ///
+    llvm::DenseMap<llvm::StringRef, clang::GlobalDecl> m_EmittedDeferredDecls;
 
     ///\brief This is a hack to get code unloading to work with ORCv2
     ///
@@ -490,6 +498,14 @@ namespace cling {
       return std::move(m_Module);
     }
     void setModule(std::unique_ptr<llvm::Module> M) { m_Module = std::move(M); }
+
+    void setEmittedDeferredDecls(
+        llvm::DenseMap<llvm::StringRef, clang::GlobalDecl>&& EDD);
+
+    llvm::DenseMap<llvm::StringRef, clang::GlobalDecl>&&
+    TakeEmittedDeferredDecls() {
+      return std::move(m_EmittedDeferredDecls);
+    }
 
     const llvm::Module* getCompiledModule() const { return m_CompiledModule; }
 

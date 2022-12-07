@@ -594,6 +594,8 @@ namespace cling {
 
         if (M) {
           T->setModule(std::move(M));
+          T->setEmittedDeferredDecls(
+              getCodeGenerator()->TakeEmittedDeferredDecls());
         }
       }
       // Module has been released from Codegen, reset the Diags now.

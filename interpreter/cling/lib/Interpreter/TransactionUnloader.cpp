@@ -144,6 +144,7 @@ namespace cling {
     m_Sema->PendingLocalImplicitInstantiations.clear();
 
     DeclUnloader DeclU(m_Sema, m_CodeGen, T);
+    Successful = unloadCodeGenDecls(*T) && Successful;
     Successful = unloadDeclarations(T, DeclU) && Successful;
     Successful = unloadDeserializedDeclarations(T, DeclU) && Successful;
     Successful = unloadFromPreprocessor(T, DeclU) && Successful;
@@ -180,4 +181,9 @@ namespace cling {
       m_CodeGen->forgetGlobal(&Glob);
     return true;
   }
+
+  bool TransactionUnloader::unloadCodeGenDecls(Transaction &T) {
+    m_CodeGen->MarkDeferred(T.TakeEmittedDeferredDecls());
+  }
+
 } // end namespace cling

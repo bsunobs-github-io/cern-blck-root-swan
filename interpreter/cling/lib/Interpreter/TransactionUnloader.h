@@ -43,6 +43,7 @@ namespace cling {
                                         DeclUnloader& DeclU);
     bool unloadFromPreprocessor(Transaction* T, DeclUnloader& DeclU);
     bool unloadModule(llvm::Module* M);
+    bool unloadCodeGenDecls(Transaction &T);
 
   public:
     TransactionUnloader(cling::Interpreter* I, clang::Sema* Sema,

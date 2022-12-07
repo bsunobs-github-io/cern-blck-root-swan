@@ -14,12 +14,15 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclBase.h"
+#include "clang/AST/GlobalDecl.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/Lex/MacroInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Sema.h"
 
 #include "llvm/IR/Module.h"
+
+#include <unordered_set>
 
 using namespace clang;
 
@@ -423,4 +426,23 @@ namespace cling {
     return SM.getLocForStartOfFile(m_BufferFID);
   }
 
+  void Transaction::setEmittedDeferredDecls(
+      llvm::DenseMap<llvm::StringRef, GlobalDecl>&& EDD) {
+    assert(m_EmittedDeferredDecls.empty());
+    llvm::DenseMap<llvm::StringRef, GlobalDecl> EmittedDeferredDeclsInclOurs =
+        std::move(EDD);
+
+    // Keep only GlobalDecls that are not part of this Transaction's AST,
+    // i.e. that come from an earlier Transaction.
+    std::unordered_map<const Decl*, StringRef> EDDIOMap;
+    for (auto &&PairStrGlobalDecl : EmittedDeferredDeclsInclOurs)
+      EDDIOMap[PairStrGlobalDecl.second.getDecl()] = PairStrGlobalDecl.first;
+
+    for (auto I = m_DeclQueue.begin(), E = m_DeclQueue.end(); I != E; ++I) {
+      for (auto D : I->m_DGR)
+        EDDIOMap.erase(D);
+    }
+    for (auto &&DeclAndName: EDDIOMap)
+      m_EmittedDeferredDecls[DeclAndName.second] = EDD[DeclAndName.second];
+  }
 } // end namespace cling
